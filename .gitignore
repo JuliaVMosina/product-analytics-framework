@@ -1,0 +1,7 @@
+data/
+*.pyc
+__pycache__/
+.dbt/
+target/
+dbt_packages/
+logs/

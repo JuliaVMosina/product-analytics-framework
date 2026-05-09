@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: mart_user_engagement
+    description: >
+      Weekly user engagement summary. One row per user per week.
+      Joins activity signals with sleep quality and user attributes.
+      Primary source for retention dashboards and cohort analysis.
+    columns:
+      - name: user_id
+        tests: [not_null]
+      - name: event_week
+        tests: [not_null]
+      - name: engagement_tier
+        tests:
+          - accepted_values:
+              values: ['high', 'medium', 'low']
+      - name: lifecycle_stage
+        tests:
+          - accepted_values:
+              values: ['Week 0', 'Onboarding', 'Early', 'Established']
+
+  - name: mart_health_scores
+    description: >
+      Daily health scores per user. One row per user per day.
+      Primary source for health trend dashboards.
+    columns:
+      - name: user_id
+        tests: [not_null]
+      - name: metric_date
+        tests: [not_null]
+      - name: sleep_tier
+        tests:
+          - accepted_values:
+              values: ['Optimal', 'Good', 'Fair', 'Pay attention']

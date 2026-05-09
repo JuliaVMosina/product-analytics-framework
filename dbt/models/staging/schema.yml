@@ -1,0 +1,43 @@
+version: 2
+
+sources:
+  - name: raw
+    database: analytics
+    schema: raw
+    tables:
+      - name: users
+      - name: events
+      - name: health_metrics
+
+models:
+  - name: stg_users
+    description: "One row per registered user, cleaned and typed"
+    columns:
+      - name: user_id
+        tests: [not_null, unique]
+      - name: registered_at
+        tests: [not_null]
+      - name: subscription_type
+        tests:
+          - accepted_values:
+              values: ['free', 'plus', 'lifetime']
+
+  - name: stg_events
+    description: "One row per product event, cleaned and typed"
+    columns:
+      - name: event_id
+        tests: [not_null, unique]
+      - name: user_id
+        tests: [not_null]
+      - name: event_name
+        tests: [not_null]
+
+  - name: stg_health_metrics
+    description: "One row per user per day — wearable health measurements"
+    columns:
+      - name: metric_id
+        tests: [not_null, unique]
+      - name: user_id
+        tests: [not_null]
+      - name: metric_date
+        tests: [not_null]
