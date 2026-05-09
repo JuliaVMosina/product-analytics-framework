@@ -41,7 +41,7 @@ weekly as (
     group by 1, 2
 ),
 
-with_metrics as (\
+with_metrics as (
     select
         *,
         -- Engagement frequency (Thesis formula 2)

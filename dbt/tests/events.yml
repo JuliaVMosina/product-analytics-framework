@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: stg_events
+    description: Product event log. One row per user action.
+    columns:
+      - name: event_id
+        tests:
+          - not_null
+          - unique
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_users')
+              field: user_id
+      - name: event_name
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - app_install
+                - app_open
+                - app_first_open
+                - onboarding_complete
+                - device_connected
+                - sleep_view
+                - readiness_view
+                - activity_view
+                - trend_view
+                - insight_view
+                - recommendation_click
+                - notification_click
+                - paywall_view
+                - subscription_start
+                - subscription_renew
+                - subscription_cancel
+                - subscription_expired
+      - name: occurred_at
+        tests:
+          - not_null

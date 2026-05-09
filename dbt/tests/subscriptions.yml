@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg_subscriptions
+    description: Subscription lifecycle records. One row per subscription period.
+    columns:
+      - name: subscription_id
+        tests:
+          - not_null
+          - unique
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_users')
+              field: user_id
+      - name: subscription_status
+        tests:
+          - accepted_values:
+              values: ['active', 'renewed', 'cancelled', 'expired']
+      - name: subscription_type
+        tests:
+          - accepted_values:
+              values: ['plus', 'lifetime']
+      - name: subscription_start
+        tests:
+          - not_null

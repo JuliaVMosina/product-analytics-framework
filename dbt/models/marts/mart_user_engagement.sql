@@ -1,6 +1,6 @@
--- Mart: user engagement — primary table for BI dashboards
+-- Mart: user engagement — primary BI table for retention and cohort analysis
 -- One row per user per week, joining activity + sleep signals
--- Used for: retention analysis, engagement cohorts, churn prediction
+-- Used for: retention analysis, engagement cohorts, NSM tracking
 
 with users as (
     select * from {{ ref('stg_users') }}
@@ -18,22 +18,28 @@ joined as (
     select
         a.user_id,
         a.event_week,
-        u.registered_at,
+        u.registration_date,
         u.subscription_type,
         u.is_paying,
         u.age_group,
         u.country,
-        u.device_model,
+        u.user_type,
 
         -- Engagement signals
         a.active_days,
         a.sessions,
         a.total_events,
-        a.syncs,
         a.sleep_views,
-        a.activity_views,
         a.readiness_views,
-        a.insights_opened,
+        a.activity_views,
+        a.trend_views,
+        a.insight_views,
+        a.recommendation_clicks,
+        a.notification_clicks,
+        a.paywall_views,
+        a.is_insight_active,
+        a.engagement_frequency,
+        a.engagement_depth,
         a.engagement_tier,
 
         -- Sleep quality
@@ -42,19 +48,13 @@ joined as (
         s.avg_readiness_score,
         s.days_with_data                               as days_with_health_data,
 
-        -- Derived fields
-        datediff('week', u.registered_at, a.event_week) as weeks_since_registration,
-        case
-            when datediff('week', u.registered_at, a.event_week) = 0 then 'Week 0'
-            when datediff('week', u.registered_at, a.event_week) <= 3 then 'Onboarding'
-            when datediff('week', u.registered_at, a.event_week) <= 12 then 'Early'
-            else 'Established'
-        end as lifecycle_stage
+        -- Lifecycle stage
+        datediff('week', u.registration_date::date, a.event_week) as weeks_since_registration
 
     from activity a
-    left join users   u on a.user_id = u.user_id
-    left join sleep   s on a.user_id = s.user_id
-                       and a.event_week = s.metric_week
+    left join users u on a.user_id = u.user_id
+    left join sleep s on a.user_id = s.user_id
+                     and a.event_week = s.metric_week
 )
 
 select * from joined

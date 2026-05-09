@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: stg_users
+    description: Cleaned users table. One row per registered user.
+    columns:
+      - name: user_id
+        tests:
+          - not_null
+          - unique
+      - name: registration_date
+        tests:
+          - not_null
+      - name: subscription_type
+        tests:
+          - accepted_values:
+              values: ['free', 'plus', 'lifetime']
+      - name: user_type
+        tests:
+          - accepted_values:
+              values: ['casual', 'regular', 'power']
+      - name: platform
+        tests:
+          - accepted_values:
+              values: ['ios', 'android']
+      - name: is_paying
+        tests:
+          - not_null

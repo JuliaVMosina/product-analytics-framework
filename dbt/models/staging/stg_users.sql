@@ -8,12 +8,14 @@ with source as (
 renamed as (
     select
         user_id,
-        created_at::timestamp                          as registered_at,
-        date(created_at)                               as registration_date,
+        registration_date::date                        as registration_date,
         country,
+        acquisition_source,
+        platform,                                      -- ios / android
         device_model,
         app_version,
         subscription_type,                             -- free / plus / lifetime
+        user_type,                                     -- casual / regular / power (Thesis §4)
         case
             when subscription_type = 'free'     then false
             else true
