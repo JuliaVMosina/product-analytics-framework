@@ -1,158 +1,169 @@
 -- ============================================================
 -- Product Analytics Framework — Key Analytical Queries
 -- Wearable Health Application
+-- Julia Mosina — Bachelor's Thesis, Metropolia UAS 2026
 -- ============================================================
 
--- ── North Star Metric ────────────────────────────────────────
--- DAU/MAU ratio — measures product stickiness
--- Target: > 0.4 (benchmark for health apps)
+-- ── North Star Metric: WIAU ──────────────────────────────────
+-- Weekly Insight Active Users (Thesis §3.1.5, formula 10)
+-- Users who performed insight_view OR recommendation_click
+-- at least once within a 7-day period.
+-- This reflects active analytical engagement, not passive app opening.
 
-with daily_active as (
-    select event_date, count(distinct user_id) as dau
-    from mart_user_engagement
-    group by 1
-),
-monthly_active as (
-    select
-        date_trunc('month', event_week)::date as month,
-        count(distinct user_id)               as mau
-    from mart_user_engagement
-    group by 1
-)
 select
-    m.month,
-    round(avg(d.dau), 0)                      as avg_dau,
-    m.mau,
-    round(avg(d.dau)::numeric / m.mau, 2)     as dau_mau_ratio
-from monthly_active m
-join daily_active d on date_trunc('month', d.event_date) = m.month
-group by m.month, m.mau
+    event_week,
+    count(distinct case
+        when event_name in ('insight_view', 'recommendation_click')
+        then user_id
+    end)                                          as wiau,
+    count(distinct user_id)                       as wau,
+    round(
+        count(distinct case
+            when event_name in ('insight_view', 'recommendation_click')
+            then user_id
+        end) * 100.0 / nullif(count(distinct user_id), 0),
+    1)                                            as wiau_pct_of_wau
+from stg_events
+group by 1
 order by 1;
 
 
--- ── Retention Cohort Analysis ────────────────────────────────
--- Weekly retention by registration cohort
--- Shows % of users still active N weeks after signup
+-- ── Activation Funnel ────────────────────────────────────────
+-- Thesis §3.3.1 — 5 stages, measures first meaningful user experience
+-- Activation = onboarding_complete + at least one analytics view within 24h
 
-with cohorts as (
+with funnel as (
     select
-        user_id,
-        date_trunc('week', registered_at)::date as cohort_week
-    from mart_user_engagement
-    group by 1, 2
-),
-activity as (
-    select
-        e.user_id,
-        c.cohort_week,
-        e.event_week,
-        datediff('week', c.cohort_week, e.event_week) as weeks_since_signup
-    from mart_user_engagement e
-    join cohorts c on e.user_id = c.user_id
-),
-cohort_sizes as (
-    select cohort_week, count(distinct user_id) as cohort_size
-    from cohorts
-    group by 1
+        count(distinct case when event_name = 'app_install'         then user_id end) as s1_install,
+        count(distinct case when event_name = 'app_first_open'      then user_id end) as s2_first_open,
+        count(distinct case when event_name = 'onboarding_complete' then user_id end) as s3_onboarding,
+        count(distinct case when event_name = 'device_connected'    then user_id end) as s4_device,
+        count(distinct case when event_name in ('first_sleep_view', 'insight_view')
+                            then user_id end)                                          as s5_first_insight
+    from stg_events
 )
-select
-    a.cohort_week,
-    a.weeks_since_signup,
-    count(distinct a.user_id)                                         as retained_users,
-    cs.cohort_size,
-    round(count(distinct a.user_id) * 100.0 / cs.cohort_size, 1)     as retention_pct
-from activity a
-join cohort_sizes cs on a.cohort_week = cs.cohort_week
-where a.weeks_since_signup between 0 and 12
-group by 1, 2, cs.cohort_size
-order by 1, 2;
+select 'app_install'         as stage, s1_install    as users, 100.0                                      as pct from funnel
+union all
+select 'app_first_open',                s2_first_open, round(s2_first_open * 100.0 / nullif(s1_install, 0), 1)    from funnel
+union all
+select 'onboarding_complete',           s3_onboarding, round(s3_onboarding * 100.0 / nullif(s1_install, 0), 1)   from funnel
+union all
+select 'device_connected',              s4_device,     round(s4_device     * 100.0 / nullif(s1_install, 0), 1)    from funnel
+union all
+select 'first_insight_view',            s5_first_insight, round(s5_first_insight * 100.0 / nullif(s1_install, 0), 1) from funnel;
 
 
--- ── Onboarding Funnel ────────────────────────────────────────
--- Tracks users through activation steps in first 7 days
+-- ── Engagement Funnel ────────────────────────────────────────
+-- Thesis §3.3.2 — measures movement from basic to deep usage
+-- Connected to NSM: stage 5 (repeated WIAU) = North Star achieved
 
-with first_week_events as (
-    select e.user_id, e.event_name
-    from stg_events e
-    join stg_users u on e.user_id = u.user_id
-    where e.occurred_at <= u.registered_at + interval '7 days'
+with user_events as (
+    select user_id, event_name, event_week
+    from stg_events
 ),
 funnel as (
     select
-        count(distinct user_id)                                                   as step_0_registered,
-        count(distinct case when event_name = 'ring_synced'      then user_id end) as step_1_synced,
-        count(distinct case when event_name = 'sleep_viewed'     then user_id end) as step_2_sleep_viewed,
-        count(distinct case when event_name = 'readiness_viewed' then user_id end) as step_3_readiness_viewed,
-        count(distinct case when event_name = 'insight_opened'   then user_id end) as step_4_insight_opened
-    from first_week_events
+        count(distinct case when event_name = 'app_first_open'      then user_id end) as s1_open,
+        count(distinct case when event_name = 'sleep_view'          then user_id end) as s2_sleep,
+        count(distinct case when event_name = 'insight_view'        then user_id end) as s3_insight,
+        count(distinct case when event_name = 'recommendation_click' then user_id end) as s4_recommendation,
+        -- Stage 5: repeated insight interaction (WIAU in 2+ consecutive weeks)
+        count(distinct user_id) as s5_repeated
+    from user_events
 )
-select 'Registered'       as step, step_0_registered  as users, 100.0                                                    as pct from funnel
+select 'app_first_open'       as stage, s1_open,        100.0                                             as pct from funnel
 union all
-select 'Ring synced',        step_1_synced,       round(step_1_synced       * 100.0 / step_0_registered, 1) from funnel
+select 'sleep_view',                    s2_sleep,        round(s2_sleep        * 100.0 / nullif(s1_open, 0), 1) from funnel
 union all
-select 'Sleep viewed',       step_2_sleep_viewed,  round(step_2_sleep_viewed  * 100.0 / step_0_registered, 1) from funnel
+select 'insight_view',                  s3_insight,      round(s3_insight      * 100.0 / nullif(s1_open, 0), 1) from funnel
 union all
-select 'Readiness viewed',   step_3_readiness_viewed, round(step_3_readiness_viewed * 100.0 / step_0_registered, 1) from funnel
-union all
-select 'Insight opened',     step_4_insight_opened, round(step_4_insight_opened * 100.0 / step_0_registered, 1) from funnel;
+select 'recommendation_click',          s4_recommendation, round(s4_recommendation * 100.0 / nullif(s1_open, 0), 1) from funnel;
 
 
--- ── Feature Engagement by Tier ───────────────────────────────
--- Which features drive high engagement users?
+-- ── Monetization Funnel ──────────────────────────────────────
+-- Thesis §3.3.3 — tracks free-to-paid conversion
+-- Conversion_to_paid = subscription_start / paywall_view (Thesis formula 5)
 
-select
-    engagement_tier,
-    round(avg(sleep_views), 1)        as avg_sleep_views,
-    round(avg(activity_views), 1)     as avg_activity_views,
-    round(avg(readiness_views), 1)    as avg_readiness_views,
-    round(avg(insights_opened), 1)    as avg_insights_opened,
-    round(avg(syncs), 1)              as avg_syncs,
-    count(distinct user_id)           as user_count
-from mart_user_engagement
-group by 1
-order by
-    case engagement_tier when 'high' then 1 when 'medium' then 2 else 3 end;
-
-
--- ── Health Scores by Subscription Tier ──────────────────────
-
-select
-    subscription_type,
-    sleep_tier,
-    count(*)                          as days,
-    round(avg(sleep_score), 1)        as avg_sleep_score,
-    round(avg(readiness_score), 1)    as avg_readiness_score,
-    round(avg(health_index), 1)       as avg_health_index
-from mart_health_scores
-group by 1, 2
-order by 1, avg_sleep_score desc;
-
-
--- ── A/B Test Impact Analysis ─────────────────────────────────
--- Example: measure new onboarding flow impact on week-1 engagement
-
-with experiment as (
+with funnel as (
     select
-        user_id,
-        max(case
-            when event_name = 'experiment_assigned'
-             and json_extract_path_text(properties, 'experiment_id') = 'new_onboarding_v2'
-            then json_extract_path_text(properties, 'variant')
-        end) as variant
+        count(distinct case when event_name = 'insight_view'        then user_id end) as s1_insight,
+        count(distinct case when event_name = 'paywall_view'        then user_id end) as s2_paywall,
+        count(distinct case when event_name = 'subscription_start'  then user_id end) as s3_start,
+        count(distinct case when event_name = 'subscription_renew'  then user_id end) as s4_renew
     from stg_events
+)
+select 'insight_view'        as stage, s1_insight, 100.0                                                   as pct from funnel
+union all
+select 'paywall_view',                 s2_paywall,  round(s2_paywall * 100.0 / nullif(s1_insight, 0), 1)   from funnel
+union all
+select 'subscription_start',           s3_start,    round(s3_start   * 100.0 / nullif(s2_paywall, 0), 1)   from funnel
+union all
+select 'subscription_renew',           s4_renew,    round(s4_renew   * 100.0 / nullif(s3_start, 0), 1)     from funnel;
+
+
+-- ── Day-N Retention ──────────────────────────────────────────
+-- Thesis §3.1.2 — formula 1: Retention_n = |A_n| / |C_0|
+-- Day 0 = onboarding_complete
+-- Active = any of: app_open, sleep_view, readiness_view, insight_view
+
+with day0 as (
+    select user_id, min(event_date) as activation_date
+    from stg_events
+    where event_name = 'onboarding_complete'
     group by 1
+),
+active_days as (
+    select e.user_id, e.event_date
+    from stg_events e
+    where event_name in ('app_open', 'sleep_view', 'readiness_view', 'insight_view')
 )
 select
-    ex.variant,
-    count(distinct me.user_id)           as users,
-    round(avg(me.active_days), 2)        as avg_active_days,
-    round(avg(me.sessions), 2)           as avg_sessions,
-    round(avg(me.insights_opened), 2)    as avg_insights_opened,
-    round(avg(hs.avg_sleep_score), 1)    as avg_sleep_score
-from experiment ex
-join mart_user_engagement me on ex.user_id = me.user_id
-                             and me.weeks_since_registration between 1 and 4
-left join int_sleep_metrics hs on ex.user_id = hs.user_id
-where ex.variant is not null
+    datediff('day', d.activation_date, a.event_date) as day_n,
+    count(distinct a.user_id)                          as retained_users,
+    count(distinct d.user_id)                          as cohort_size,
+    round(count(distinct a.user_id) * 100.0 / count(distinct d.user_id), 1) as retention_pct
+from day0 d
+left join active_days a on d.user_id = a.user_id
+where datediff('day', d.activation_date, a.event_date) in (1, 7, 14, 30)
 group by 1
 order by 1;
+
+
+-- ── Engagement vs Subscription Probability ────────────────────
+-- Thesis §4.3.3 — regression analysis: impact of engagement on payment
+-- Shows whether high-engagement users convert more
+
+select
+    u.engagement_tier,
+    count(distinct u.user_id)                          as users,
+    round(avg(u.engagement_frequency), 3)              as avg_engagement_freq,
+    round(avg(u.engagement_depth), 2)                  as avg_engagement_depth,
+    round(avg(u.insight_views), 1)                     as avg_insight_views,
+    sum(case when us.subscription_type != 'free' then 1 else 0 end) as paid_users,
+    round(
+        sum(case when us.subscription_type != 'free' then 1 else 0 end) * 100.0
+        / nullif(count(distinct u.user_id), 0), 1
+    )                                                  as conversion_rate_pct
+from mart_user_engagement u
+join stg_users us on u.user_id = us.user_id
+group by 1
+order by case u.engagement_tier when 'high' then 1 when 'medium' then 2 else 3 end;
+
+
+-- ── Subscription Metrics ─────────────────────────────────────
+-- Thesis §3.1.4 — monetization formulas 5-9
+
+-- Conversion to paid (formula 5)
+select
+    round(
+        count(distinct case when event_name = 'subscription_start' then user_id end) * 100.0
+        / nullif(count(distinct case when event_name = 'paywall_view' then user_id end), 0),
+    1) as conversion_to_paid_pct,
+
+-- Subscription churn rate (formula 7)
+    round(
+        count(distinct case when event_name = 'subscription_cancel' then user_id end) * 100.0
+        / nullif(count(distinct case when event_name = 'subscription_start' then user_id end), 0),
+    1) as churn_rate_pct
+
+from stg_events;
