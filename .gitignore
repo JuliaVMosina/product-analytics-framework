@@ -1,4 +1,4 @@
-data/
+data/generated/
 *.pyc
 __pycache__/
 .dbt/

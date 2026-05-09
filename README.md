@@ -225,6 +225,48 @@ Test files: `tests/users.yml` · `tests/subscriptions.yml` · `tests/events.yml`
 
 ---
 
+## Dataset
+
+The `data/` directory contains the **actual synthetic dataset** used in the thesis, generated with the probabilistic behavioral model described in §4.
+
+### Raw data (`data/raw/`)
+
+| File | Description |
+|---|---|
+| `users.csv` | 1000 users with behavioral type, subscription, demographics |
+| `events.csv` | Full event log — all taxonomy events across 120-day observation |
+| `sessions.csv` | Session records with start/end timestamps |
+| `subscriptions.csv` | Subscription lifecycle (active / renewed / cancelled / expired) |
+| `health_metrics.csv` | Daily wearable measurements (sleep, activity, readiness) |
+| `feature_usage.csv` | Feature interaction records |
+
+### Analytical results (`data/analytics/`)
+
+Pre-computed metric outputs that back the thesis Table 1 results:
+
+| File | Metric |
+|---|---|
+| `WAU.csv` | Weekly Active Users — avg 768.8 |
+| `WIAU.csv` | Weekly Insight Active Users — avg 692.4 |
+| `conversion.csv` | Conversion to paid — 19.6% |
+| `conversion_weekly.csv` | Weekly conversion trend |
+| `subscription_retention.csv` | Renewal rate — 74.5% |
+| `engagement_by_user.csv` | Engagement tier × subscription analysis |
+
+### Charts (`assets/charts/`)
+
+Visualizations produced during analysis:
+
+| File | Description |
+|---|---|
+| `Dynamics of WAU and WIAU.png` | NSM trend over the observation period |
+| `Engagement Ratio.png` | Value Engagement Ratio = WIAU/WAU = 90.1% |
+| `Weekly Conversion Rate.png` | Subscription conversion over time |
+| `Weekly Conversion Rate (Smoothed Trend).png` | Smoothed conversion trend |
+| `Provavility of Paid.png` | Subscription probability by engagement tier |
+
+---
+
 ## Running the Data Generator
 
 ```bash
